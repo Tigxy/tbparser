@@ -1,4 +1,5 @@
-from collections import namedtuple
+import os
+from collections import namedtuple, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Union, Optional
@@ -10,6 +11,10 @@ from tbparser.events_reader import EventReadingError, EventsFileReader
 
 SummaryItem = namedtuple(
     'SummaryItem', ['tag', 'step', 'wall_time', 'value', 'type']
+)
+
+ScalarItem = namedtuple(
+    'ScalarItem', ['step', 'wall_time', 'value']
 )
 
 
@@ -97,7 +102,6 @@ class SummaryReader(Iterable):
         :return: A generator with decoded events
             or `None`s if an event can't be decoded
         """
-
         for event in events:
             if not event.HasField('summary'):
                 yield None
@@ -130,6 +134,50 @@ class SummaryReader(Iterable):
     def _check_item(self, item):
         return
 
+    def get_runs(self):
+        log_files = sorted(f for f in self._logdir.glob(os.path.join('**', '*')) if f.is_file())
+        return [f for f in log_files if self._is_log_file(f)]
+
+    def get_run_scalars(self, run):
+        run_data = defaultdict(lambda: list())
+        try:
+            for item in self._iter_file(run):
+                run_data[item.tag].append(ScalarItem(
+                    step=item.step,
+                    wall_time=item.wall_time,
+                    value=item.value
+                ))
+
+        except EventReadingError:
+            if self._stop_on_error:
+                raise
+            else:
+                return None
+
+        return dict(run_data)
+
+    def _is_log_file(self, file):
+        # Determine validity of file by checking whether a reading error occures
+        try:
+            _ = next(self._iter_file(file))
+            return True
+        except EventReadingError:
+            return False
+
+    def _iter_file(self, file):
+        with open(file, 'rb') as f:
+            reader = EventsFileReader(f)
+            try:
+                yield from (
+                    item for item in self._decode_events(reader)
+                    if item is not None and all([
+                    self._check_tag(item.tag),
+                    item.type in self._types
+                ])
+                )
+            except EventReadingError:
+                raise
+
     def __iter__(self) -> SummaryItem:
         """
         Iterate over events in all the files in the current logdir
@@ -137,18 +185,10 @@ class SummaryReader(Iterable):
         """
         log_files = sorted(f for f in self._logdir.glob('*') if f.is_file())
         for file_path in log_files:
-            with open(file_path, 'rb') as f:
-                reader = EventsFileReader(f)
-                try:
-                    yield from (
-                        item for item in self._decode_events(reader)
-                        if item is not None and all([
-                            self._check_tag(item.tag),
-                            item.type in self._types
-                        ])
-                    )
-                except EventReadingError:
-                    if self._stop_on_error:
-                        raise
-                    else:
-                        continue
+            try:
+                yield from self._iter_file(file_path)
+            except EventReadingError:
+                if self._stop_on_error:
+                    raise
+                else:
+                    continue
