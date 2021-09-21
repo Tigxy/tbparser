@@ -1,4 +1,5 @@
-from collections import namedtuple
+import os.path
+from collections import namedtuple, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Union, Optional
@@ -9,7 +10,11 @@ import numpy as np
 from tbparser.events_reader import EventReadingError, EventsFileReader
 
 SummaryItem = namedtuple(
-    'SummaryItem', ['tag', 'step', 'wall_time', 'value', 'type']
+    'SummaryItem', ['run', 'tag', 'step', 'wall_time', 'value', 'type']
+)
+
+ScalarItem = namedtuple(
+    "ScalarItem", ['step', 'wall_time', 'value']
 )
 
 
@@ -90,7 +95,7 @@ class SummaryReader(Iterable):
         ):
             raise ValueError('Invalid type name')
 
-    def _decode_events(self, events: Iterable) -> Optional[SummaryItem]:
+    def _decode_events(self, events: Iterable, run=None) -> Optional[SummaryItem]:
         """
         Convert events to `SummaryItem` instances
         :param events: An iterable with events objects
@@ -110,6 +115,7 @@ class SummaryReader(Iterable):
                     data = decoder(value)
                     if data is not None:
                         yield SummaryItem(
+                            run=run,
                             tag=tag,
                             step=step,
                             wall_time=wall_time,
@@ -130,18 +136,35 @@ class SummaryReader(Iterable):
     def _check_item(self, item):
         return
 
+    def load_scalar_data(self):
+        tag_data = defaultdict(lambda: defaultdict(lambda: list()))
+        for item in self:
+            tag_data[item.tag][item.run].append(ScalarItem(
+                step=item.step,
+                wall_time=item.wall_time,
+                value=item.value
+            ))
+
+        # ensure that values are sorted by time
+        for tag_key in tag_data.keys():
+            for run_key in tag_data[tag_key].keys():
+                tag_data[tag_key][run_key].sort(key=lambda x: x.wall_time)
+
+        return dict(tag_data)
+
     def __iter__(self) -> SummaryItem:
         """
         Iterate over events in all the files in the current logdir
         :return: A generator with `SummaryItem` objects
         """
-        log_files = sorted(f for f in self._logdir.glob('*') if f.is_file())
+        log_files = sorted(f for f in self._logdir.glob(os.path.join('**', '*')) if f.is_file())
         for file_path in log_files:
             with open(file_path, 'rb') as f:
                 reader = EventsFileReader(f)
                 try:
+                    run = os.path.relpath(file_path, self._logdir)
                     yield from (
-                        item for item in self._decode_events(reader)
+                        item for item in self._decode_events(reader, run)
                         if item is not None and all([
                             self._check_tag(item.tag),
                             item.type in self._types
