@@ -149,7 +149,10 @@ class SummaryReader(Iterable):
         for tag_key in tag_data.keys():
             for run_key in tag_data[tag_key].keys():
                 tag_data[tag_key][run_key].sort(key=lambda x: x.wall_time)
-
+                
+        for tag_key in tag_data.keys():
+            tag_data[tag_key] = dict(tag_data[tag_key])
+        
         return dict(tag_data)
 
     def __iter__(self) -> SummaryItem:
@@ -162,9 +165,10 @@ class SummaryReader(Iterable):
             with open(file_path, 'rb') as f:
                 reader = EventsFileReader(f)
                 try:
-                    run = os.path.relpath(file_path, self._logdir)
+                    run_name = os.path.relpath(file_path, os.path.dirname(self._logdir))
+                    run_name = run_name.replace(os.path.sep, "")
                     yield from (
-                        item for item in self._decode_events(reader, run)
+                        item for item in self._decode_events(reader, run_name)
                         if item is not None and all([
                             self._check_tag(item.tag),
                             item.type in self._types
