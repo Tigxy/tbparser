@@ -165,8 +165,8 @@ class SummaryReader(Iterable):
             with open(file_path, 'rb') as f:
                 reader = EventsFileReader(f)
                 try:
-                    run_name = os.path.relpath(file_path, os.path.dirname(self._logdir))
-                    run_name = run_name.replace(os.path.sep, "")
+                    run_name = os.path.relpath(file_path, self._logdir)
+                    run_name = os.path.dirname(run_name)
                     yield from (
                         item for item in self._decode_events(reader, run_name)
                         if item is not None and all([

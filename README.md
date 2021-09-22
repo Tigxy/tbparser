@@ -7,7 +7,7 @@ A simple library for parsing Tensorboard logs.
 You can install the library as usual with `pip`:
 
 ```
-pip install git+https://github.com/velikodniy/tbparser.git
+pip install git+https://github.com/tigxy/tbparser.git
 ```
 
 ## Usage
