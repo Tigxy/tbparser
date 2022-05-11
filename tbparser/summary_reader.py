@@ -160,7 +160,7 @@ class SummaryReader(Iterable):
         Iterate over events in all the files in the current logdir
         :return: A generator with `SummaryItem` objects
         """
-        log_files = sorted(f for f in self._logdir.glob(os.path.join('**', '*')) if f.is_file())
+        log_files = sorted(f for f in self._logdir.glob(os.path.join('**', 'events.out.tfevents.*')) if f.is_file())
         for file_path in log_files:
             with open(file_path, 'rb') as f:
                 reader = EventsFileReader(f)
